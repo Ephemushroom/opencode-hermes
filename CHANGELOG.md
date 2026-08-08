@@ -1,0 +1,21 @@
+# Changelog
+
+## [0.1.0] - 2026-08-09
+
+Initial release.
+
+- Reports Claude Code-style context as `x-hermes-*` request headers on every LLM
+  call: environment facts, scratchpad directory, context-management flag, and a
+  session-cached git startup snapshot
+- Scratchpad path layout byte-compatible with Claude Code
+  (`<tmpdir>/claude/<flattened-cwd>/<sessionID>/scratchpad`, created with mode 0o700)
+- Git snapshot mirrors Claude Code: concurrent `status --short` / `log --oneline -n 5` /
+  `config user.name`, `core.hooksPath=/dev/null` + `core.fsmonitor=` safety flags on
+  ref probes, 2000-char status truncation, `(clean)` substitution, `user` omitted when empty
+- ASCII-safe JSON header values (non-ASCII escaped as `\uXXXX`) so non-ASCII paths and
+  filenames survive HTTP header transport
+- Claude-only by default: headers are sent only when the model ID contains
+  `claude` (configurable via `modelFilter`)
+- Kill switch via `HERMES_CONTEXT_DISABLE=1`
+- Gateway-side parsing and injection contract documented in
+  [docs/gateway-contract.md](docs/gateway-contract.md)

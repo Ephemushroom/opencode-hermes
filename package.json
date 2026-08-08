@@ -1,0 +1,56 @@
+{
+  "name": "@ephemushroom/opencode-hermes",
+  "version": "0.1.0",
+  "description": "OpenCode plugin that reports Claude Code-style context (environment, scratchpad, git status) as x-hermes-* request headers for gateway-side injection",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outfile dist/index.js --target bun --format esm && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "bun test",
+    "lint": "oxlint",
+    "fmt": "oxfmt --write src/",
+    "fmt:check": "oxfmt --check src/",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run clean && bun run build"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "claude-code",
+    "context-injection",
+    "gateway",
+    "hermes"
+  ],
+  "author": "Ephemushroom",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ephemushroom/opencode-hermes.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ephemushroom/opencode-hermes/issues"
+  },
+  "homepage": "https://github.com/Ephemushroom/opencode-hermes#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.14.41",
+    "@types/bun": "latest",
+    "oxfmt": "^0.33.0",
+    "oxlint": "^1.63.0",
+    "typescript": "^5.9.3"
+  }
+}
