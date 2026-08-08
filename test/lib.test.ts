@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import * as os from "node:os"
 import * as path from "node:path"
 import * as fs from "node:fs"
+import { fileURLToPath } from "node:url"
 import { test } from "node:test"
 
 import {
@@ -51,8 +52,10 @@ test("scratchpadPathFor: 路径五段结构与 Claude Code 一致", () => {
 })
 
 test("gitSnapshot: 真实 git 仓库产出快照", async () => {
-  const snapshot = await gitSnapshot("D:\\Programme\\AI\\Hermes")
-  assert.ok(snapshot !== null, "Hermes 是 git 仓库, 应产出快照")
+  // 用仓库自身做样本: 本地与 CI checkout 后都是 git 仓库
+  const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+  const snapshot = await gitSnapshot(repoRoot)
+  assert.ok(snapshot !== null, "仓库根目录是 git 仓库, 应产出快照")
   assert.ok(snapshot!.branch.length > 0)
   assert.ok(snapshot!.mainBranch.length > 0)
   assert.equal(typeof snapshot!.status, "string")
