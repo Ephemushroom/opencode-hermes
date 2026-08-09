@@ -20,17 +20,6 @@ opencode 插件:复刻 Claude Code 的动态上下文注入机制,但不直接�
 防止 HTTP header 传输层的 latin-1 编码破坏 UTF-8。网关侧 `JSON.parse` /
 `System.Text.Json` 原生还原,无需特殊处理。
 
-### 与 Claude Code 行为的对齐点
-
-- scratchpad 路径: `<CLAUDE_CODE_TMPDIR || os.tmpdir()>/claude/<x0(cwd)>/<sessionID>/scratchpad`,
-  `x0()` 把非字母数字全部替换为 `-`,超 200 字符截断 + 8 位 hash
-- git 快照: `status --short` / `log --oneline -n 5` / `config user.name` 并发执行;
-  分支探测带 `-c core.hooksPath=/dev/null -c core.fsmonitor=` 安全前缀
-- status 超 2000 字符截断(`statusTruncated: true`),空输出记为 `(clean)`,
-  `user.name` 为空时 `user` 字段不存在
-- **会话级缓存**: 每个 sessionID 只取一次 git 快照 — "snapshot in time"
-- 主分支解析链: `symbolic-ref refs/remotes/origin/HEAD` → `origin/main` → `origin/master` → `"main"`
-
 ## 安装与接线
 
 在 opencode 配置中声明(全局 `~/.config/opencode/opencode.json` 或项目 `opencode.json`):
@@ -41,6 +30,8 @@ opencode 插件:复刻 Claude Code 的动态上下文注入机制,但不直接�
   "plugin": ["@ephemushroom/opencode-hermes"]
 }
 ```
+
+opencode 启动时会用 Bun 自动安装 `plugin` 里声明的包,无需手动 npm install。
 
 带选项:
 

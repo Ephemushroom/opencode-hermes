@@ -18,6 +18,8 @@ On every LLM request the plugin computes the same dynamic context blocks that Cl
 }
 ```
 
+OpenCode installs `plugin` entries automatically with Bun on startup — no manual `npm install` step needed.
+
 2. Restart OpenCode.
 3. Send a message with a Claude model — the outgoing request now carries the `x-hermes-*` headers.
 
@@ -49,16 +51,6 @@ With options:
 | `x-hermes-git-status` | ASCII-safe JSON | `{ branch, mainBranch, user?, status, statusTruncated, recentCommits }` — **omitted entirely outside git repos** |
 
 **ASCII-safe JSON:** every non-ASCII character (e.g. CJK file names in `git status`) is escaped as `\uXXXX`, because HTTP header values are transported as latin-1. `JSON.parse` / `System.Text.Json` restore them natively — no custom decoding.
-
-### Claude Code parity
-
-The algorithms replicate Claude Code 2.1.214/2.1.220 exactly (static analysis + traffic captures):
-
-- Scratchpad path: `<CLAUDE_CODE_TMPDIR || os.tmpdir()>/claude/<x0(cwd)>/<sessionID>/scratchpad`, where `x0()` flattens every non-alphanumeric character to `-` (200-char cap + hash suffix)
-- Git snapshot: `status --short` / `log --oneline -n 5` / `config user.name` run concurrently; ref probes carry `-c core.hooksPath=/dev/null -c core.fsmonitor=` so a malicious repo can't execute hooks
-- `status` truncated at 2000 chars (`statusTruncated: true`), empty output becomes `(clean)`, empty `user.name` omits the field
-- **Session-level cache**: one snapshot per `sessionID` — "snapshot in time", exactly like Claude Code
-- Main branch resolution: `symbolic-ref refs/remotes/origin/HEAD` → `origin/main` → `origin/master` → `"main"`
 
 ### Model filtering
 
@@ -107,16 +99,6 @@ bun run lint        # oxlint
 ```
 
 Zero runtime dependencies — the plugin uses only Node/Bun built-ins, and the `@opencode-ai/plugin` import is type-only (erased at build time).
-
-## Releasing
-
-CI runs tests + build on every push to `main`. To cut a release:
-
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-```
-
-The release workflow builds, verifies `dist/`, creates a GitHub Release, and publishes to npm with provenance (requires the `NPM_TOKEN` repo secret).
 
 ## License
 
