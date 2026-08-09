@@ -4,7 +4,8 @@
  * 在每次 LLM 请求的 chat.headers 钩子里注入 x-hermes-* 请求头:
  *
  *   x-hermes-context-version    契约版本, 当前 "1"
- *   x-hermes-environment        ASCII 安全 JSON: cwd/platform/shell/osVersion/model/agent/...
+ *   x-hermes-environment        ASCII 安全 JSON: cwd/platform/shell/osVersion/agent/isGitRepo
+ *                                 (模型信息不上报 — 网关从请求体 model 字段自取)
  *   x-hermes-scratchpad         ASCII 安全 JSON: { path }(目录已落盘创建)
  *   x-hermes-context-management "true"(该块为静态常量, 网关持有 canonical 文本)
  *   x-hermes-git-status         ASCII 安全 JSON: 启动快照(会话级缓存, 非 git 仓库整头省略)
@@ -122,8 +123,6 @@ const HermesContextPlugin: Plugin = async ({ directory, client }, options) => {
           agent: input.agent,
           cwd: directory,
           isGitRepo: gitRepoCache.value,
-          modelID: model.id,
-          modelName: model.name,
           ...(opts.extraEnvironment ? { extra: opts.extraEnvironment } : {}),
         })
         headers[HEADER_ENVIRONMENT] = toHeaderJson(env)

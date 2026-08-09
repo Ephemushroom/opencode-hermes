@@ -37,7 +37,8 @@ kimi/gpt 等模型的请求上看不到这些头,属正常行为而非故障(插
 
 ### 1.2 `x-hermes-environment` — 环境事实(JSON)
 
-字段与 Claude Code `# Environment` 块渲染项一一对应,外加 `agent`(§5 subagent 策略用):
+字段与 Claude Code `# Environment` 块渲染项一一对应,外加 `agent`(§5 subagent 策略用)。
+模型 ID/显示名**不上报** — 网关从请求体的 `model` 字段自取。
 
 ```json
 {
@@ -45,10 +46,8 @@ kimi/gpt 等模型的请求上看不到这些头,属正常行为而非故障(插
   "cwd": "D:\\Programme\\AI\\Hermes",
   "isGitRepo": true,
   "platform": "win32",
-  "shell": "C:\\Windows\\System32\\cmd.exe",
-  "osVersion": "Windows_NT 10.0.26100",
-  "modelID": "claude-opus-4-8",
-  "modelName": "Claude Opus 4.8"
+  "shell": "PowerShell",
+  "osVersion": "Windows_NT 10.0.26100"
 }
 ```
 
@@ -58,9 +57,8 @@ kimi/gpt 等模型的请求上看不到这些头,属正常行为而非故障(插
 | `cwd` | string | opencode 启动目录(originalCwd) |
 | `isGitRepo` | bool | 启动目录是否 git 仓库 |
 | `platform` | string | Node `process.platform`:`win32` / `darwin` / `linux` |
-| `shell` | string\|null | `$SHELL` 或 Windows `ComSpec` |
+| `shell` | string | 对齐 Claude Code `v6s()`:`$SHELL` 存在时取原值(zsh/bash 简化为裸名);Windows 上无 `$SHELL` 时固定 `"PowerShell"`(**不看 ComSpec** — 那是系统命令解释器,非用户终端);非 Windows 且无 `$SHELL` 为 `"unknown"` |
 | `osVersion` | string | `os.type() + " " + os.release()` |
-| `modelID` / `modelName` | string\|null | 本次请求的模型 ID 与显示名 |
 
 插件选项 `extraEnvironment` 可追加自定义键(例如需要会话关联时自行加回
 `sessionID`),解析时应容忍未知字段。
@@ -73,7 +71,7 @@ kimi/gpt 等模型的请求上看不到这些头,属正常行为而非故障(插
 
 - `path` 是**已落盘创建**(0o700)的绝对路径,结构
   `<tmpdir>/claude/<x0(cwd)>/<sessionID>/scratchpad`,与 Claude Code 逐字对齐;
-  sessionID 已含在路径中(也在 `x-hermes-environment` 里),不单独携带;
+  sessionID 已含在路径中,不单独携带;
 - 客户端创建失败时该头**整体缺失**,网关按不注入处理;
 - 路径含本地用户名与项目路径 — 注入给模型是设计意图(对齐 Claude Code),
   但必须随头一起剥离,不得出现在转发上游的原始 header 中。
@@ -221,7 +219,8 @@ You have been invoked in the following environment:
  - You are powered by the model named {modelName}. The exact model ID is {modelID}.
 ```
 
-`shell` / `modelName` 为 null 时对应行省略。
+模型行由网关从请求体 `model` 字段渲染(`modelName` 无显示名时可只写 ID 或按
+Claude Code 文案退化);`shell` 不会为 null(v6s 语义,见 §1.2)。
 
 ### 4.2 `# Scratchpad Directory` 块(来自 1.3)
 
@@ -294,6 +293,60 @@ Recent commits:
 **Prompt cache 边界**:git 快照是四块中唯一随仓库状态变化的内容,
 放在末尾独立块可最大化前缀缓存命中;不要把它揉进 environment 块中间。
 
+### 4.6 组装示例(C#)
+
+```csharp
+public static class HermesContextInjector
+{
+    /// <summary>按 §4 模板把解析结果还原为 system 文本块, 返回顺序即注入顺序。</summary>
+    public static IReadOnlyList<string> BuildBlocks(HermesContext ctx, string modelFromBody)
+    {
+        var blocks = new List<string>();
+
+        if (ctx.Environment is { } envDoc)                       // §4.1
+        {
+            var e = envDoc.RootElement;
+            blocks.Add($"""
+                # Environment
+                You have been invoked in the following environment:
+                 - Primary working directory: {e.GetProperty("cwd").GetString()}
+                 - Is a git repository: {e.GetProperty("isGitRepo").GetBoolean()}
+                 - Platform: {e.GetProperty("platform").GetString()}
+                 - Shell: {e.GetProperty("shell").GetString()}
+                 - OS Version: {e.GetProperty("osVersion").GetString()}
+                 - You are powered by the model named {modelFromBody}. The exact model ID is {modelFromBody}.
+                """);
+        }
+
+        if (ctx.ScratchpadPath is { } sp)                        // §4.2
+            blocks.Add(ScratchpadBlock.Replace("{path}", sp));
+
+        if (ctx.ContextManagement)                               // §4.3
+            blocks.Add(ContextManagementBlock);
+
+        if (ctx.Git is { } g)                                    // §4.4, 固定末尾, 带 "gitStatus: " 前缀
+        {
+            var sb = new StringBuilder();
+            sb.Append("This is the git status at the start of the conversation. Note that this status is a snapshot in time, and will not update during the conversation.");
+            sb.Append("\n\nCurrent branch: ").Append(g.Branch);
+            sb.Append("\n\nMain branch (you will usually use this for PRs): ").Append(g.MainBranch);
+            if (g.User is not null) sb.Append("\n\nGit user: ").Append(g.User);
+            sb.Append("\n\nStatus:\n").Append(g.Status);
+            if (g.StatusTruncated)
+                sb.Append("\n... (truncated because it exceeds 2k characters. If you need more information, run \"git status\" using the available shell tool)");
+            sb.Append("\n\nRecent commits:\n").Append(g.RecentCommits);
+            blocks.Add("gitStatus: " + sb);
+        }
+        return blocks;
+    }
+
+    // Anthropic 形态: 逐块 append 进请求体 "system" 数组;
+    // OpenAI 形态: string.Join("\n\n", blocks) 并入 messages[0] (role=system) 末尾。
+}
+```
+
+注入后调用 `HermesContextHeaders.Strip`(§3)再转发。
+
 ---
 
 ## 5. Subagent 策略(可选,对齐 Claude Code §5.7)
@@ -321,4 +374,4 @@ Claude Code 构造 subagent 上下文时**显式剔除 gitStatus**(`let { gitSta
 `apps/egress`:在请求改写(账号/模型路由之后、上游转发之前)插入
 `HermesContextMiddleware`:`Parse` → 按 §4 模板注入 body → `Strip`。
 测试可参照 `apps/server.tests/Proxy/WatchdogYarpIntegrationTests.cs` 的
-header 断言模式,对四个头做往返验证。
+header 断言模式,对全部 `x-hermes-*` 头做往返验证。

@@ -250,23 +250,32 @@ export type EnvironmentFacts = {
   cwd: string
   isGitRepo: boolean
   platform: string
-  shell: string | null
+  shell: string
   osVersion: string
-  modelID: string | null
-  modelName: string | null
   [key: string]: unknown
 }
 
-export function detectShell(): string | null {
-  return process.env.SHELL ?? process.env.ComSpec ?? null
+/**
+ * 对齐 Claude Code 的 v6s(): $SHELL 存在时取原值(zsh/bash 简化);
+ * Windows 上无 $SHELL 时固定 "PowerShell" — 不能用 ComSpec 兜底,
+ * ComSpec 是系统命令解释器(永远 cmd.exe), 不是用户实际使用的终端;
+ * 非 Windows 且无 $SHELL 时为 "unknown"。
+ */
+export function detectShell(): string {
+  const envShell = process.env.SHELL
+  if (envShell) {
+    if (envShell.includes("zsh")) return "zsh"
+    if (envShell.includes("bash")) return "bash"
+    return envShell
+  }
+  if (process.platform === "win32") return "PowerShell"
+  return "unknown"
 }
 
 export function buildEnvironment(input: {
   agent: string
   cwd: string
   isGitRepo: boolean
-  modelID?: string | undefined
-  modelName?: string | undefined
   extra?: Record<string, string> | undefined
 }): EnvironmentFacts {
   return {
@@ -276,8 +285,6 @@ export function buildEnvironment(input: {
     platform: process.platform,
     shell: detectShell(),
     osVersion: `${os.type()} ${os.release()}`,
-    modelID: input.modelID ?? null,
-    modelName: input.modelName ?? null,
     ...(input.extra ?? {}),
   }
 }

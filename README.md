@@ -45,7 +45,7 @@ With options:
 | Header | Value | Description |
 |---|---|---|
 | `x-hermes-context-version` | `"1"` | Contract version, bumped on breaking changes |
-| `x-hermes-environment` | ASCII-safe JSON | `agent`, `cwd`, `isGitRepo`, `platform`, `shell`, `osVersion`, `modelID`, `modelName` |
+| `x-hermes-environment` | ASCII-safe JSON | `agent`, `cwd`, `isGitRepo`, `platform`, `shell`, `osVersion` (model info is **not** reported — the gateway reads it from the request body's `model` field) |
 | `x-hermes-scratchpad` | ASCII-safe JSON | `{ "path" }` — directory already created on disk (mode `0o700`) |
 | `x-hermes-context-management` | `"true"` | Flag only; the block is a static constant owned by the gateway |
 | `x-hermes-git-status` | ASCII-safe JSON | `{ branch, mainBranch, user?, status, statusTruncated, recentCommits }` — **omitted entirely outside git repos** |

@@ -7,6 +7,7 @@ import { test } from "node:test"
 
 import {
   FLATTEN_CAP,
+  detectShell,
   flattenCwd,
   gitSnapshot,
   isGitRepo,
@@ -48,6 +49,22 @@ test("scratchpadPathFor: 路径五段结构与 Claude Code 一致", () => {
     if (prev === undefined) delete process.env.CLAUDE_CODE_TMPDIR
     else process.env.CLAUDE_CODE_TMPDIR = prev
     fs.rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
+test("detectShell: 对齐 Claude Code v6s() 语义", () => {
+  const prev = process.env.SHELL
+  try {
+    process.env.SHELL = "C:\\Program Files\\Git\\usr\\bin\\bash.exe"
+    assert.equal(detectShell(), "bash")
+    process.env.SHELL = "/bin/zsh"
+    assert.equal(detectShell(), "zsh")
+    // 无 $SHELL: Windows 固定 PowerShell(不看 ComSpec), 其余平台 unknown
+    delete process.env.SHELL
+    assert.equal(detectShell(), process.platform === "win32" ? "PowerShell" : "unknown")
+  } finally {
+    if (prev === undefined) delete process.env.SHELL
+    else process.env.SHELL = prev
   }
 })
 
