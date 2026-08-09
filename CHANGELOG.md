@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.1] - 2026-08-09
+
+- Switch release workflow to tokenless OIDC trusted publishing (drop the
+  `NODE_AUTH_TOKEN` secret entirely)
+- Make the `clean` script cross-platform so local publishes work on Windows
+
 ## [0.1.0] - 2026-08-09
 
 Initial release.

@@ -1,6 +1,6 @@
 {
   "name": "@ephemushroom/opencode-hermes",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenCode plugin that reports Claude Code-style context (environment, scratchpad, git status) as x-hermes-* request headers for gateway-side injection",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

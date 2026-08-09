@@ -48,6 +48,5 @@ jobs:
           generate_release_notes: true
 
       - name: Publish to npm
+        # 无 NODE_AUTH_TOKEN: npm CLI 检测到 OIDC 环境,自动走 trusted publishing
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
