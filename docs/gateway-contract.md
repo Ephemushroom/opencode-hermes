@@ -37,16 +37,16 @@ kimi/gpt 等模型的请求上看不到这些头,属正常行为而非故障(插
 
 ### 1.2 `x-hermes-environment` — 环境事实(JSON)
 
+字段与 Claude Code `# Environment` 块渲染项一一对应,外加 `agent`(§5 subagent 策略用):
+
 ```json
 {
-  "sessionID": "4f101af4-fdbc-4439-9bdc-ccdc9b26a6c1",
   "agent": "build",
   "cwd": "D:\\Programme\\AI\\Hermes",
   "isGitRepo": true,
   "platform": "win32",
   "shell": "C:\\Windows\\System32\\cmd.exe",
   "osVersion": "Windows_NT 10.0.26100",
-  "providerID": "anthropic",
   "modelID": "claude-opus-4-8",
   "modelName": "Claude Opus 4.8"
 }
@@ -54,25 +54,26 @@ kimi/gpt 等模型的请求上看不到这些头,属正常行为而非故障(插
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `sessionID` | string | opencode 会话 ID;也是 git 快照/scratchpad 的缓存边界 |
 | `agent` | string | 发起请求的 agent 名;**非主 agent 时是 subagent**,见 §5 |
 | `cwd` | string | opencode 启动目录(originalCwd) |
 | `isGitRepo` | bool | 启动目录是否 git 仓库 |
 | `platform` | string | Node `process.platform`:`win32` / `darwin` / `linux` |
 | `shell` | string\|null | `$SHELL` 或 Windows `ComSpec` |
 | `osVersion` | string | `os.type() + " " + os.release()` |
-| `providerID` / `modelID` / `modelName` | string\|null | 本次请求的模型信息 |
+| `modelID` / `modelName` | string\|null | 本次请求的模型 ID 与显示名 |
 
-插件选项可追加自定义键(`extraEnvironment`),解析时应容忍未知字段。
+插件选项 `extraEnvironment` 可追加自定义键(例如需要会话关联时自行加回
+`sessionID`),解析时应容忍未知字段。
 
 ### 1.3 `x-hermes-scratchpad` — scratchpad 目录(JSON)
 
 ```json
-{ "path": "C:\\Users\\Bryan\\AppData\\Local\\Temp\\claude\\D--Programme-AI-Hermes\\4f101af4-...\\scratchpad", "sessionID": "4f101af4-..." }
+{ "path": "C:\\Users\\Bryan\\AppData\\Local\\Temp\\claude\\D--Programme-AI-Hermes\\4f101af4-...\\scratchpad" }
 ```
 
 - `path` 是**已落盘创建**(0o700)的绝对路径,结构
   `<tmpdir>/claude/<x0(cwd)>/<sessionID>/scratchpad`,与 Claude Code 逐字对齐;
+  sessionID 已含在路径中(也在 `x-hermes-environment` 里),不单独携带;
 - 客户端创建失败时该头**整体缺失**,网关按不注入处理;
 - 路径含本地用户名与项目路径 — 注入给模型是设计意图(对齐 Claude Code),
   但必须随头一起剥离,不得出现在转发上游的原始 header 中。

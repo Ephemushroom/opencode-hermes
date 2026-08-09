@@ -5,7 +5,7 @@
  *
  *   x-hermes-context-version    契约版本, 当前 "1"
  *   x-hermes-environment        ASCII 安全 JSON: cwd/platform/shell/osVersion/model/agent/...
- *   x-hermes-scratchpad         ASCII 安全 JSON: { path, sessionID }(目录已落盘创建)
+ *   x-hermes-scratchpad         ASCII 安全 JSON: { path }(目录已落盘创建)
  *   x-hermes-context-management "true"(该块为静态常量, 网关持有 canonical 文本)
  *   x-hermes-git-status         ASCII 安全 JSON: 启动快照(会话级缓存, 非 git 仓库整头省略)
  *
@@ -119,11 +119,9 @@ const HermesContextPlugin: Plugin = async ({ directory, client }, options) => {
           gitRepoCache.value = snapshot !== null || (await isGitRepo(directory, gitTimeoutMs))
         }
         const env = buildEnvironment({
-          sessionID: input.sessionID,
           agent: input.agent,
           cwd: directory,
           isGitRepo: gitRepoCache.value,
-          providerID: model.providerID,
           modelID: model.id,
           modelName: model.name,
           ...(opts.extraEnvironment ? { extra: opts.extraEnvironment } : {}),
@@ -141,7 +139,7 @@ const HermesContextPlugin: Plugin = async ({ directory, client }, options) => {
           scratchpadCache.set(input.sessionID, dir)
         }
         if (dir !== null) {
-          headers[HEADER_SCRATCHPAD] = toHeaderJson({ path: dir, sessionID: input.sessionID })
+          headers[HEADER_SCRATCHPAD] = toHeaderJson({ path: dir })
         }
       }
 

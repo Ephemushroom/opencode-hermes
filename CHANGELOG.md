@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.2] - 2026-08-09
+
+Slim down the headers to what the gateway actually consumes:
+
+- `x-hermes-scratchpad`: drop `sessionID` — it is already a path segment
+- `x-hermes-environment`: drop `sessionID` and `providerID`; the block only
+  renders `cwd` / `isGitRepo` / `platform` / `shell` / `osVersion` / `modelID` /
+  `modelName`, and `agent` stays for the optional subagent policy
+  (`extraEnvironment` can add anything back)
+
 ## [0.1.1] - 2026-08-09
 
 - Switch release workflow to tokenless OIDC trusted publishing (drop the

@@ -246,14 +246,12 @@ export async function gitSnapshot(cwd: string, timeoutMs = GIT_TIMEOUT_MS): Prom
 // ---------------------------------------------------------------------------
 
 export type EnvironmentFacts = {
-  sessionID: string
   agent: string
   cwd: string
   isGitRepo: boolean
   platform: string
   shell: string | null
   osVersion: string
-  providerID: string | null
   modelID: string | null
   modelName: string | null
   [key: string]: unknown
@@ -264,24 +262,20 @@ export function detectShell(): string | null {
 }
 
 export function buildEnvironment(input: {
-  sessionID: string
   agent: string
   cwd: string
   isGitRepo: boolean
-  providerID?: string | undefined
   modelID?: string | undefined
   modelName?: string | undefined
   extra?: Record<string, string> | undefined
 }): EnvironmentFacts {
   return {
-    sessionID: input.sessionID,
     agent: input.agent,
     cwd: input.cwd,
     isGitRepo: input.isGitRepo,
     platform: process.platform,
     shell: detectShell(),
     osVersion: `${os.type()} ${os.release()}`,
-    providerID: input.providerID ?? null,
     modelID: input.modelID ?? null,
     modelName: input.modelName ?? null,
     ...(input.extra ?? {}),

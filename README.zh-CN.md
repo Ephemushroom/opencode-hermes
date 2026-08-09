@@ -11,8 +11,8 @@ opencode 插件:复刻 Claude Code 的动态上下文注入机制,但不直接�
 | Header | 值 | 说明 |
 |---|---|---|
 | `x-hermes-context-version` | `"1"` | 契约版本,破坏性变更时递增 |
-| `x-hermes-environment` | ASCII 安全 JSON | cwd / platform / shell / osVersion / model / agent / sessionID / isGitRepo |
-| `x-hermes-scratchpad` | ASCII 安全 JSON | `{ "path": "...", "sessionID": "..." }`,目录已落盘创建(0o700) |
+| `x-hermes-environment` | ASCII 安全 JSON | agent / cwd / isGitRepo / platform / shell / osVersion / modelID / modelName |
+| `x-hermes-scratchpad` | ASCII 安全 JSON | `{ "path": "..." }`,目录已落盘创建(0o700) |
 | `x-hermes-context-management` | `"true"` | 该块是静态常量,网关持有 canonical 文本,这里只发开关 |
 | `x-hermes-git-status` | ASCII 安全 JSON | `{ branch, mainBranch, user?, status, statusTruncated, recentCommits }`,**非 git 仓库整头省略** |
 
