@@ -23,6 +23,30 @@ OpenCode installs `plugin` entries automatically with Bun on startup — no manu
 2. Restart OpenCode.
 3. Send a message with a Claude model — the outgoing request now carries the `x-hermes-*` headers.
 
+### OpenCode 2 beta
+
+From v0.2.0, both OpenCode generations use the **same package name**. OpenCode 2 uses the native `plugins` configuration (plural):
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [{
+    "package": "@ephemushroom/opencode-hermes",
+    "options": { "toolSearchDelivery": "immediate" }
+  }]
+}
+```
+
+The unified entry is tested with `opencode 1.18.29` and `opencode2 0.0.0-beta-19192`; the V2 SDK is pinned to `0.0.0-beta-18050`. Older V1 loaders without object-style `server()` support are not supported by this entry. V2 registers a direct `ToolSearch` tool and sends a versioned `x-hermes-client-family: opencode2` contract. Hermes converts the OpenCode 2 catalog into Claude Code's eager/deferred ToolSearch shape; when Claude calls `ToolSearch`, the plugin resolves the schemas and submits the `<functions>` result through the local OpenCode 2 session API.
+
+`immediate` maps to the current API's `steer` delivery and is the default; `deferred` maps to `queue`. The current names `steer` and `queue` are accepted directly.
+
+The root, `main`, and `/server` exports share a plain `{ id, server, setup }` definition: V1 calls `server`, V2 calls `setup`. [Effect is optional](https://opencode.ai/v2/docs/build/plugins/); this plugin uses the officially supported Promise API and needs no Effect rewrite. Importing the module does not initialize either adapter.
+
+The `/v2` export remains available for programmatic imports. Do not use an npm `/v2` suffix in the current beta's `plugins` configuration: it is interpreted as a local path. Replace any old suffixed entry with the bare name, rather than configuring both. Direct callers of the former default function should use the named `HermesPlugin` export (or `default.server`).
+
+After upgrading, finish active work and restart `opencode`. For V2, also run `opencode2 service restart` before reopening the client.
+
 With options:
 
 ```json
@@ -80,6 +104,7 @@ flowchart LR
 | `scratchpadDirName` | `"claude"` | Base directory name under the temp root |
 | `gitTimeoutMs` | `5000` | Per-git-command timeout |
 | `extraEnvironment` | — | Extra key/value pairs merged into the environment JSON |
+| `toolSearchDelivery` | `"immediate"` (`steer`) | OpenCode 2 only: `steer`/`queue`, with `immediate`/`deferred` aliases |
 
 ## Environment Variables
 
@@ -98,7 +123,7 @@ bun run build       # bundle dist/index.js + emit declarations
 bun run lint        # oxlint
 ```
 
-Zero runtime dependencies — the plugin uses only Node/Bun built-ins, and the `@opencode-ai/plugin` import is type-only (erased at build time).
+The plugin executes using Node/Bun built-ins and Zod. Both OpenCode SDK imports are type-only (erased at build time); their packages remain dependencies so published TypeScript declarations can resolve them. No SDK or Effect code is imported at runtime.
 
 ## License
 

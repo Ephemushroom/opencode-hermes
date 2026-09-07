@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.0] - 2026-09-07
+
+- Unify the root, `main`, and `/server` entrypoints with a plain
+  `{ id, server, setup }` definition for OpenCode 1 and 2; no Effect rewrite needed
+- Verify packed bare-package installation with OpenCode `1.18.29` and OpenCode2
+  `0.0.0-beta-19192`, including context headers and a ToolSearch round trip
+- Keep `HermesPlugin` callable for direct V1 integrations; the default export is
+  now an object and requires a V1 host supporting `server()` modules
+- Keep SDK dependencies available to consumers of the published declarations
+- Require typechecking and both runtime build outputs in CI and releases
+
+- Add the `@ephemushroom/opencode-hermes/v2` export for OpenCode2 beta
+  `0.0.0-beta-18050`
+- Register a direct ToolSearch plugin tool, mirror OpenCode2 `shell/subagent`
+  aliases to Claude Code `Bash/Agent`, and deliver ToolSearch results through
+  the local session API
+- Accept `immediate/deferred` delivery names as aliases for the current
+  `steer/queue` API enum
+- Add versioned OpenCode2 client/tool-protocol headers for Hermes routing
+- Use the bare package name in V2 configuration; the current beta treats npm
+  subpath specifiers as local paths. `/v2` remains a programmatic export
+
 ## [0.1.3] - 2026-08-09
 
 - Shell detection now mirrors Claude Code's `v6s()`: `$SHELL` (zsh/bash
