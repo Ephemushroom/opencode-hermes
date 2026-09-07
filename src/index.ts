@@ -25,7 +25,9 @@
  *   CLAUDE_CODE_TMPDIR        scratchpad 临时根目录(对齐 Claude Code)
  */
 
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Plugin, PluginModule } from "@opencode-ai/plugin"
+
+import HermesOpenCode2Plugin from "./v2.js"
 
 import {
   CONTRACT_VERSION,
@@ -155,5 +157,9 @@ const HermesContextPlugin: Plugin = async ({ directory, client }, options) => {
   }
 }
 
-export default HermesContextPlugin
+// V1 reads server; V2 reads setup. Keep this a plain object for V2 schema decoding.
+export default {
+  ...HermesOpenCode2Plugin,
+  server: HermesContextPlugin,
+} satisfies PluginModule & typeof HermesOpenCode2Plugin
 export const HermesPlugin = HermesContextPlugin
