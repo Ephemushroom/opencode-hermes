@@ -31,6 +31,9 @@ jobs:
       - name: Test
         run: bun test
 
+      - name: Typecheck
+        run: bun run typecheck
+
       - name: Build
         run: bun run build
 
@@ -38,13 +41,15 @@ jobs:
         run: |
           test -f dist/index.js
           test -f dist/index.d.ts
+          test -f dist/v2.js
+          test -f dist/v2.d.ts
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/index.js
-            dist/index.d.ts
+            dist/*.js
+            dist/*.d.ts
           generate_release_notes: true
 
       - name: Publish to npm

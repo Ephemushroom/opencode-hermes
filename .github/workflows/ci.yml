@@ -23,6 +23,9 @@ jobs:
       - name: Test
         run: bun test
 
+      - name: Typecheck
+        run: bun run typecheck
+
       - name: Build
         run: bun run build
 
@@ -30,3 +33,5 @@ jobs:
         run: |
           test -f dist/index.js || (echo "dist/index.js missing" && exit 1)
           test -f dist/index.d.ts || (echo "dist/index.d.ts missing" && exit 1)
+          test -f dist/v2.js || (echo "dist/v2.js missing" && exit 1)
+          test -f dist/v2.d.ts || (echo "dist/v2.d.ts missing" && exit 1)
