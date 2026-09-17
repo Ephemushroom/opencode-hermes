@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.0] - 2026-09-17
+
+- Target OpenCode 2.0.6's `@opencode/plugin` SDK
+- Remove V2 ToolSearch registration, duplicate tool catalogs, companion tool headers,
+  and synthetic result delivery; Hermes now bridges Claude ToolSearch to native Code Mode
+- Keep environment reporting and native client identity intact; obsolete
+  `toolSearchDelivery` options are ignored
+- Upgrade Hermes to v0.4.8 before updating the plugin, then restart the OpenCode
+  service. The V1 context adapter remains available through the unified entrypoint
+
 ## [0.2.0] - 2026-09-07
 
 - Unify the root, `main`, and `/server` entrypoints with a plain

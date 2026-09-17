@@ -52,7 +52,7 @@ opencode 启动时会用 Bun 自动安装 `plugin` 里声明的包,无需手动 
 
 **改完配置需重启 opencode 生效**(配置不热加载)。
 
-### OpenCode 2 beta
+### OpenCode 2.0.6
 
 从 v0.2.0 起，OpenCode 1 和 2 使用**同一个包名**。V2 使用原生 `plugins` 配置（复数）：
 
@@ -61,20 +61,20 @@ opencode 启动时会用 Bun 自动安装 `plugin` 里声明的包,无需手动 
   "$schema": "https://opencode.ai/config.json",
   "plugins": [{
     "package": "@ephemushroom/opencode-hermes",
-    "options": { "toolSearchDelivery": "immediate" }
+    "options": { "environment": true }
   }]
 }
 ```
 
-统一入口已在 `opencode 1.18.29` 和 `opencode2 0.0.0-beta-19192` 上验证，V2 SDK 固定为 `0.0.0-beta-18050`。不支持尚未提供对象式 `server()` 加载的旧 V1。插件注册可直接执行的 `ToolSearch`，并发送 `x-hermes-client-family: opencode2` 等版本化契约头。Hermes 把 OpenCode2 工具目录转换为 Claude Code eager/deferred ToolSearch 形态；Claude 发出 ToolSearch 后，插件查询原始 schema，并通过本机 session API 投递 `<functions>` 结果。
+V2 适配器使用 `@opencode/plugin` **2.0.6**，仅上报环境上下文。工具发现与执行使用 OpenCode 原生 `execute` 和 Code Mode `search(...)`；Claude Code 的 ToolSearch 兼容层由 Hermes 的 `NativeBridge` 负责。插件不注册 ToolSearch、不维护别名或 eager/deferred 分类、不向会话投递搜索结果。原生 UA 和 `x-opencode-*` 身份头保持完整，供网关识别原生客户端。
 
-`toolSearchDelivery` 默认 `immediate`，映射到当前 API 的 `steer`；`deferred` 映射到 `queue`。也可以直接填写 `steer` 或 `queue`。
+从插件 **v0.3.0** 起，删除已废弃的 `toolSearchDelivery` 配置（旧值会被忽略）。先升级 Hermes 至 **v0.4.8 或更高版本**，再升级插件。V1 上下文适配器保留，要求客户端支持对象式 `server()` 加载。
 
 根入口、`main` 和 `/server` 导出指向同一普通对象 `{ id, server, setup }`：V1 调用 `server`，V2 调用 `setup`，导入时不会启动任何适配器。[Effect 是可选形式](https://opencode.ai/v2/docs/build/plugins/)，本插件使用官方支持的 Promise API，无需重写为 Effect。
 
 `/v2` 导出保留供代码直接导入；不要在当前 beta 的 `plugins` 配置中填写 npm `/v2` 后缀，它会被误判为本地路径。将旧配置项替换为裸包名，不要同时添加两项。原先直接调用默认函数的代码应改用具名 `HermesPlugin` 或 `default.server`。
 
-升级后先结束正在运行的任务，再重启 `opencode`；V2 还需执行 `opencode2 service restart` 后重新打开客户端。两个 SDK 仅用于类型声明，运行时代码不导入 SDK 或 Effect；Zod 是运行时依赖。
+升级后先结束正在运行的任务，执行 `opencode service restart` 后重新打开 V2 客户端。新请求应包含原生 `execute` 且不含插件注册的 ToolSearch。两个 SDK 仅用于类型声明，运行时代码不导入 SDK 或 Effect；Zod 是运行时依赖。
 
 ### 模型过滤
 
@@ -95,8 +95,7 @@ kimi/gpt 等其他模型的请求一个头也不发,原样穿过网关。Bedrock
 
 ```
 src/index.ts   插件入口: chat.headers 钩子 + 会话级缓存 + 选项
-src/v2.ts      V2 适配器: 请求头 + ToolSearch 注册与投递
-src/v2-lib.ts  V2 工具目录、别名和检索逻辑
+src/v2.ts      V2 适配器: 仅上下文请求头，工具协议由网关接入原生 Code Mode
 src/lib.ts     纯逻辑: x0 打平 / scratchpad 路径 / git 快照 / ASCII JSON
 test/lib.test.ts  单测(bun test)
 docs/gateway-contract.md  Hermes 网关处理文档(header 契约 + 注入算法 + C# 示例)

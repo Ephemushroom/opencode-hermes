@@ -1,4 +1,4 @@
-import type { Plugin as PluginNamespace } from "@opencode-ai/plugin-v2";
+import type { Plugin as PluginNamespace } from "@opencode/plugin";
 import { z } from "zod";
 
 import {
@@ -15,20 +15,6 @@ import {
   toHeaderJson,
   type GitSnapshot,
 } from "./lib.js";
-import {
-  buildOpenCode2ToolCatalog,
-  buildOpenCode2ToolSearchPrompt,
-  executeOpenCode2ToolSearch,
-  normalizeOpenCode2Delivery,
-  type OpenCode2ToolCatalog,
-  type OpenCode2ToolDefinition,
-} from "./v2-lib.js";
-
-const CLIENT_FAMILY_HEADER = "x-hermes-client-family";
-const TOOL_PROTOCOL_HEADER = "x-hermes-tool-protocol-version";
-const TOOL_DELIVERY_HEADER = "x-hermes-tool-delivery";
-const CLIENT_FAMILY = "opencode2";
-const TOOL_PROTOCOL_VERSION = "1";
 
 const OptionsSchema = z.object({
   environment: z.boolean().default(true),
@@ -39,31 +25,7 @@ const OptionsSchema = z.object({
   extraEnvironment: z.record(z.string(), z.string()).optional(),
   gitTimeoutMs: z.number().int().positive().default(5000),
   modelFilter: z.string().default("claude"),
-  toolSearchDelivery: z.enum(["steer", "queue", "immediate", "deferred"]).default("immediate"),
 });
-
-const ToolSearchInputSchema = z.object({
-  query: z.string(),
-  max_results: z.number().int().positive().optional(),
-});
-
-const JsonObjectSchema = z.record(z.string(), z.unknown());
-
-const ToolSearchDefinition = {
-  name: "ToolSearch",
-  description:
-    "Search the deferred tool catalog exposed through the Hermes Claude Code compatibility layer.",
-  input: {
-    type: "object",
-    properties: {
-      query: { type: "string" },
-      max_results: { type: "number", default: 5 },
-    },
-    required: ["query", "max_results"],
-    additionalProperties: false,
-  },
-  options: { codemode: false },
-} as const;
 
 function disabled(): boolean {
   const value = process.env.HERMES_CONTEXT_DISABLE;
@@ -74,50 +36,10 @@ const HermesOpenCode2Plugin = {
   id: "ephemushroom.hermes.opencode2",
   setup: async (ctx) => {
     const options = OptionsSchema.parse(ctx.options);
-    const delivery = normalizeOpenCode2Delivery(options.toolSearchDelivery);
-    const catalogs = new Map<string, OpenCode2ToolCatalog>();
     const directories = new Map<string, string>();
     const gitCache = new Map<string, GitSnapshot | null>();
     const scratchpadCache = new Map<string, string | null>();
     const gitRepoCache = new Map<string, boolean>();
-
-    await ctx.tool.transform((tools) => {
-      tools.add({
-        ...ToolSearchDefinition,
-        execute: async (rawInput, context) => {
-          const parsed = ToolSearchInputSchema.parse(rawInput);
-          const input =
-            parsed.max_results === undefined
-              ? { query: parsed.query }
-              : { query: parsed.query, max_results: parsed.max_results };
-          const catalog = catalogs.get(context.sessionID);
-          const result =
-            catalog === undefined
-              ? { content: "<functions></functions>", isError: true }
-              : executeOpenCode2ToolSearch(input, catalog);
-
-          await ctx.session.prompt(
-            buildOpenCode2ToolSearchPrompt(context.sessionID, result, delivery),
-          );
-
-          return {
-            content: `<hermes-tool-search delivery="${delivery}" status="${result.isError ? "error" : "scheduled"}"/>`,
-            metadata: { delivery, isError: result.isError },
-          };
-        },
-      });
-    });
-
-    await ctx.session.hook("context", (event) => {
-      const definitions: Record<string, OpenCode2ToolDefinition> = {};
-      for (const [name, tool] of Object.entries(event.tools)) {
-        definitions[name] = {
-          description: tool.description,
-          input: JsonObjectSchema.parse(tool.input),
-        };
-      }
-      catalogs.set(event.sessionID, buildOpenCode2ToolCatalog(definitions));
-    });
 
     await ctx.session.hook("model.request", async (event) => {
       if (disabled()) return;
@@ -131,9 +53,8 @@ const HermesOpenCode2Plugin = {
         directories.set(event.sessionID, directory);
       }
 
-      event.headers[CLIENT_FAMILY_HEADER] = CLIENT_FAMILY;
-      event.headers[TOOL_PROTOCOL_HEADER] = TOOL_PROTOCOL_VERSION;
-      event.headers[TOOL_DELIVERY_HEADER] = delivery;
+      // ToolSearch belongs to Hermes' native Code Mode bridge. Keep the
+      // client's native identity and tool inventory untouched.
       event.headers[HEADER_VERSION] = CONTRACT_VERSION;
 
       let snapshot = gitCache.get(event.sessionID);

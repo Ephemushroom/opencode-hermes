@@ -378,23 +378,23 @@ header 断言模式,对全部 `x-hermes-*` 头做往返验证。
 
 ---
 
-## 8. OpenCode2 ToolSearch 契约
+## 8. OpenCode 2.0.6 原生 Code Mode 协作
 
-OpenCode2 与 V1 共用插件包名 `@ephemushroom/opencode-hermes`（V2 使用 `plugins` 配置），V2 适配器额外发送：
+OpenCode2 与 V1 共用包名 `@ephemushroom/opencode-hermes`（V2 使用 `plugins` 配置）。
+插件只通过 `session.model.request` 上报第 1 节的上下文头。原生身份使用
+`opencode/<channel>/2.0.6/<app>` UA，以及 `x-opencode-project/session/client`；插件不覆盖它们。
 
-| Header | 值 | 说明 |
-|---|---|---|
-| `x-hermes-client-family` | `opencode2` | 在相同的 `opencode/<version>` UA 下区分 V2 |
-| `x-hermes-tool-protocol-version` | `1` | ToolSearch 双向转换契约版本 |
-| `x-hermes-tool-delivery` | `steer` / `queue` | OpenCode2 session inbox 的结果投递方式 |
+### 工具闭环与所有权
 
-Hermes 仅在 UA 属于 OpenCode、版本头合法且 `tools[]` 存在插件注册的 `ToolSearch` 时判定为 OpenCode2。三个内部头与上下文头一样，转发上游前必须全部剥离。
+1. OpenCode 原生声明直接工具及 `execute(code: string)`，隐藏工具由 Code Mode 目录提供。
+2. Hermes 依据原生身份和 execute schema 选择 `NativeBridge`，统一维护上游别名与 eager/deferred 分类。
+3. 上游 ToolSearch 被网关转换为原生 execute 调用。直接工具 schema 来自当前请求；隐藏工具通过原生 `search(...)` 查询。
+4. OpenCode 返回执行结果，Hermes 恢复上游 ToolSearch 的 ID、输入及结果；后续调用使用直接工具或 Code Mode 的精确路径。
 
-往返流程：
+插件不注册 ToolSearch、不缓存工具目录、不调用 `session.prompt` 投递结果。
+旧的 `x-hermes-client-family`、`x-hermes-tool-protocol-version`、`x-hermes-tool-delivery` 不再发送；
+`toolSearchDelivery` 旧配置会被忽略。这样网关调整 Grep/Glob 的加载策略时不再需要同步第二份分类表。
 
-1. 插件缓存 `session.context` 的原始工具 schema，并注册直接工具 `ToolSearch`；`session.model.request` 注入契约头。
-2. Hermes 的 OpenCode2 handler 把 V2 内建名 `shell/subagent` 临时适配为 legacy `bash/task`，复用既有 Claude Code `Bash/Agent` eager 指纹，响应时再恢复 V2 原名。
-3. 入站插件 ToolSearch 定义由 Hermes 替换为 canonical Claude Code 定义；Claude 返回同名 tool_use 后由插件直接执行。
-4. 插件按确定性别名规则查询 deferred schema、渲染 `<functions>`，再调用本机 `session.prompt`。旧称 `immediate/deferred` 分别映射到当前 API 的 `steer/queue`。
-
-Hermes 不接受客户端提供的任意 OpenCode2 回调 URL；本机会话投递由进程内插件完成，从结构上避免 SSRF、远程服务发现和额外认证面。
+部署顺序：先升级 Hermes 至 v0.4.8 或更高版本，再升级插件至 v0.3.0 并重启 OpenCode 服务。旧版插件仍会触发网关的
+LegacyCompanion 兼容路径，因此需确认新请求已不含插件 ToolSearch。Code Mode 的路径与签名
+保持原样，不能从 TypeScript 签名猜测独立工具的 JSON Schema。
