@@ -1,10 +1,10 @@
 /**
  * Hermes 上下文上报 — 纯逻辑层。
  *
- * 算法逐行复刻 Claude Code 2.1.214/2.1.220 的动态上下文注入机制,
+ * 动态上下文基于 Claude Code 2.1.214/2.1.220 的注入机制,
  * 依据: D:\Programme\AI\cc\docs\CONTEXT-INJECTION.md
  *
- * 与 Claude Code 的差异仅在于产出形式: Claude Code 把上下文拼进 system prompt,
+ * scratchpad 使用可读项目名与路径 hash; Claude Code 把上下文拼进 system prompt,
  * 本插件把同样的事实以 ASCII 安全 JSON 放进 x-hermes-* 请求头, 由 Hermes 网关
  * 解析后注入。
  */
@@ -69,7 +69,7 @@ export function toHeaderJson(value: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// scratchpad 路径(复刻 jY/Iw/Lie/rpe/S2_ 链条)
+// scratchpad 路径
 // ---------------------------------------------------------------------------
 
 /**
@@ -83,16 +83,47 @@ export function flattenCwd(cwd: string): string {
   return `${flat.slice(0, FLATTEN_CAP)}-${hash}`
 }
 
-/** jY(): 临时目录根, CLAUDE_CODE_TMPDIR 优先 */
-export function tmpRoot(): string {
-  return process.env.CLAUDE_CODE_TMPDIR || os.tmpdir()
+export function tmpRoot(
+  platform: NodeJS.Platform = process.platform,
+  systemTmpDir = os.tmpdir(),
+  override = process.env.CLAUDE_CODE_TMPDIR,
+): string {
+  return override || (platform === "darwin" ? "/tmp" : systemTmpDir)
+}
+
+export function defaultScratchpadDirName(
+  platform: NodeJS.Platform = process.platform,
+  uid = process.getuid?.(),
+): string {
+  return platform === "win32" ? "claude" : `claude-${uid}`
+}
+
+export function scratchpadProjectSegment(
+  cwd: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const paths = platform === "win32" ? path.win32 : path.posix
+  const absolute = paths.resolve(cwd)
+  const hash = createHash("sha256").update(absolute).digest("hex").slice(0, 8)
+  const name =
+    Array.from(paths.basename(absolute), (character) =>
+      character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127 || /[<>:"/\\|?*]/.test(character)
+        ? "-"
+        : character,
+    ).join("").replace(/[. ]+$/g, "") || "root"
+  let readable = ""
+  for (const character of name) {
+    if (Buffer.byteLength(readable + character, "utf8") > 200) break
+    readable += character
+  }
+  return `${readable}-${hash}`
 }
 
 /**
  * Iw() + Lie(): <tmpRoot>/<dirName>, 立即创建(0o700)并取 realpath。
  * 失败返回 null — 对齐 Claude Code 的 getScratchpadDir() 可返回 null 的语义。
  */
-export function scratchpadBaseDir(dirName = "claude"): string | null {
+export function scratchpadBaseDir(dirName = defaultScratchpadDirName()): string | null {
   const base = path.join(tmpRoot(), dirName)
   try {
     fs.mkdirSync(base, { recursive: true, mode: 0o700 })
@@ -103,20 +134,20 @@ export function scratchpadBaseDir(dirName = "claude"): string | null {
 }
 
 /**
- * rpe() + S2_(): <base>/<x0(cwd)>/<sessionID>/scratchpad
- * 纯计算, 不落盘。
+ * <base>/<project-name>-<hash>/<sessionID>/scratchpad。
+ * 创建 base, 不创建会话目录。
  */
-export function scratchpadPathFor(cwd: string, sessionID: string, dirName = "claude"): string | null {
+export function scratchpadPathFor(cwd: string, sessionID: string, dirName?: string): string | null {
   const base = scratchpadBaseDir(dirName)
   if (base === null) return null
-  return path.join(base, flattenCwd(cwd), sessionID, "scratchpad")
+  return path.join(base, scratchpadProjectSegment(cwd), sessionID, "scratchpad")
 }
 
 /**
  * ensureScratchpadDir: 计算路径并落盘创建(0o700)。
  * 每个会话首次上报时调用一次, 对应 Claude Code init 阶段的 wBo()。
  */
-export function ensureScratchpadDir(cwd: string, sessionID: string, dirName = "claude"): string | null {
+export function ensureScratchpadDir(cwd: string, sessionID: string, dirName?: string): string | null {
   const dir = scratchpadPathFor(cwd, sessionID, dirName)
   if (dir === null) return null
   try {

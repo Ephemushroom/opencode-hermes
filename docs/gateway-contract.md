@@ -66,12 +66,20 @@ kimi/gpt 等模型的请求上看不到这些头,属正常行为而非故障(插
 ### 1.3 `x-hermes-scratchpad` — scratchpad 目录(JSON)
 
 ```json
-{ "path": "C:\\Users\\Bryan\\AppData\\Local\\Temp\\claude\\D--Programme-AI-Hermes\\4f101af4-...\\scratchpad" }
+{ "path": "C:\\Users\\Bryan\\AppData\\Local\\Temp\\claude\\Hermes-a1b2c3d4\\4f101af4-...\\scratchpad" }
 ```
 
 - `path` 是**已落盘创建**(0o700)的绝对路径,结构
-  `<tmpdir>/claude/<x0(cwd)>/<sessionID>/scratchpad`,与 Claude Code 逐字对齐;
-  sessionID 已含在路径中,不单独携带;
+  `<root>/<base>/<项目名>-<hash>/<完整 sessionID>/scratchpad`;
+  sessionID 已含在路径中,不单独携带。示例 hash 仅为占位;
+- macOS 默认 root 为 `/tmp`（realpath 后 `/private/tmp`），Linux/Windows 使用
+  `os.tmpdir()`；非空 `CLAUDE_CODE_TMPDIR` 覆盖 root。默认 base 为 Unix 的
+  `claude-<uid>` 或 Windows 的 `claude`；显式 `scratchpadDirName` 原样使用，不追加 UID;
+- 项目名保留中文等 Unicode，非法字符替换为 `-`，去掉末尾点/空格，空名称或根目录
+  使用 `root`，按 UTF-8 截至 200 字节且不拆码点。hash 为词法规范化绝对 cwd
+  （不解析项目软链接）的 SHA-256 前 8 位小写十六进制，整个分段最多 209 字节。
+  这有意不同于 Claude Code 的全路径打平算法；网关必须把路径视为不透明值，不重算;
+- 旧目录不迁移或删除，会话缓存和 OpenCode 访问权限配置不变;
 - 客户端创建失败时该头**整体缺失**,网关按不注入处理;
 - 路径含本地用户名与项目路径 — 注入给模型是设计意图(对齐 Claude Code),
   但必须随头一起剥离,不得出现在转发上游的原始 header 中。

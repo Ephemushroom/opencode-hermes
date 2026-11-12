@@ -1,6 +1,6 @@
 # opencode-hermes(中文说明)
 
-opencode 插件:复刻 Claude Code 的动态上下文注入机制,但不直接改 system prompt,
+opencode 插件:基于 Claude Code 风格的动态上下文注入机制,但不直接改 system prompt,
 而是把同样的事实以 `x-hermes-*` 请求头上报,由 Hermes 网关解析后注入请求体。
 
 算法依据: Claude Code 2.1.214/2.1.220 静态分析 + 抓包实证
@@ -42,7 +42,6 @@ opencode 启动时会用 Bun 自动安装 `plugin` 里声明的包,无需手动 
     "scratchpad": true,
     "contextManagement": true,
     "gitStatus": true,
-    "scratchpadDirName": "claude",
     "gitTimeoutMs": 5000,
     "modelFilter": "claude",
     "extraEnvironment": { "team": "platform" }
@@ -91,12 +90,24 @@ kimi/gpt 等其他模型的请求一个头也不发,原样穿过网关。Bedrock
 | `HERMES_CONTEXT_DISABLE=1` | 整体停用,一个 header 也不发 |
 | `CLAUDE_CODE_TMPDIR` | scratchpad 临时根目录(对齐 Claude Code 语义) |
 
+### Scratchpad 路径
+
+结构为 `<root>/<base>/<项目名>-<hash>/<完整 sessionID>/scratchpad`:
+
+- macOS 默认根目录为 `/tmp`，经 realpath 解析为 `/private/tmp`；Linux 和 Windows 使用 `os.tmpdir()`。非空 `CLAUDE_CODE_TMPDIR` 优先覆盖根目录。
+- Unix 默认基目录为 `claude-<uid>`，Windows 为 `claude`。省略 `scratchpadDirName` 才会使用平台默认值；显式设置的名称原样使用，不追加 UID（包括显式 `"claude"`）。
+- 项目分段保留中文等 Unicode，例如 `笔记Note-<8 位十六进制 hash>`。hash 是规范化绝对工作目录路径的 SHA-256 前 8 位小写十六进制，用于区分不同位置的同名项目；仅做词法路径规范化，不解析项目软链接。
+- 文件系统非法字符替换为 `-`，去掉末尾点和空格，空名称或根目录使用 `root`。可读名称按 UTF-8 限制为 200 字节，不拆分 Unicode 码点；加上 hash 后整个分段最多 209 字节。
+- session ID 保持完整。目录以 `0o700` 创建（受平台支持限制），请求头仍使用 ASCII 安全 JSON，解析后无损恢复中文路径。
+
+此项目分段有意不同于 Claude Code 的全路径打平算法。不会迁移或删除旧目录，不改变会话缓存生命周期，也不会配置 OpenCode 访问权限白名单。
+
 ## 目录结构
 
 ```
 src/index.ts   插件入口: chat.headers 钩子 + 会话级缓存 + 选项
 src/v2.ts      V2 适配器: 仅上下文请求头，工具协议由网关接入原生 Code Mode
-src/lib.ts     纯逻辑: x0 打平 / scratchpad 路径 / git 快照 / ASCII JSON
+src/lib.ts     共享逻辑: 可读 scratchpad 路径 / git 快照 / ASCII JSON
 test/lib.test.ts  单测(bun test)
 docs/gateway-contract.md  Hermes 网关处理文档(header 契约 + 注入算法 + C# 示例)
 ```

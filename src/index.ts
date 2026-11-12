@@ -53,7 +53,7 @@ export type HermesContextOptions = {
   contextManagement?: boolean
   /** 注入 x-hermes-git-status, 默认 true */
   gitStatus?: boolean
-  /** scratchpad 基目录名, 默认 "claude"(对齐 Claude Code 布局) */
+  /** scratchpad 基目录名, 默认 Unix: claude-<uid>, Windows: claude; 显式值原样使用 */
   scratchpadDirName?: string
   /** 附加进 environment JSON 的自定义键值 */
   extraEnvironment?: Record<string, string>
@@ -77,7 +77,7 @@ const HermesContextPlugin: Plugin = async ({ directory, client }, options) => {
   const useScratchpad = opts.scratchpad !== false
   const useContextManagement = opts.contextManagement !== false
   const useGitStatus = opts.gitStatus !== false
-  const dirName = opts.scratchpadDirName ?? "claude"
+  const dirName = opts.scratchpadDirName
   const gitTimeoutMs = opts.gitTimeoutMs ?? 5000
   const modelFilter = (opts.modelFilter ?? "claude").toLowerCase()
 

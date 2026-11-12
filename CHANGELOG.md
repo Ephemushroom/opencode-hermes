@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.1] - 2026-11-12
+
+- Use platform-aware scratchpad roots: `/tmp` on macOS (realpath `/private/tmp`),
+  `os.tmpdir()` elsewhere, with `CLAUDE_CODE_TMPDIR` taking precedence
+- Default to `claude-<uid>` on Unix and `claude` on Windows; explicit
+  `scratchpadDirName` values are used exactly without an appended UID
+- Replace flattened project paths with a Unicode-readable basename (up to 200
+  UTF-8 bytes) plus eight SHA-256 hex digits of the normalized absolute path;
+  preserve the full session ID. This supersedes the historical byte-compatible
+  layout claim below; no old directories are migrated or deleted
+
 ## [0.3.0] - 2026-09-17
 
 - Target OpenCode 2.0.6's `@opencode/plugin` SDK

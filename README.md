@@ -2,7 +2,7 @@
 
 Claude Code-style context reporting for [OpenCode](https://opencode.ai) — delivered as `x-hermes-*` HTTP request headers instead of prompt mutations.
 
-On every LLM request the plugin computes the same dynamic context blocks that Claude Code injects into its system prompt (environment, scratchpad directory, git startup snapshot) and sends them as request headers. A gateway (e.g. Hermes) parses the headers, rebuilds the context blocks, and injects them into the request body — so context assembly lives in one place, on the server side.
+On every LLM request the plugin computes Claude Code-style dynamic context blocks (environment, scratchpad directory, git startup snapshot) and sends them as request headers. A gateway (e.g. Hermes) parses the headers, rebuilds the context blocks, and injects them into the request body — so context assembly lives in one place, on the server side. Scratchpad project names intentionally use a readable basename plus a short path hash instead of Claude Code's flattened full path.
 
 [中文说明](README.zh-CN.md) · [Gateway contract (解析与注入规范)](docs/gateway-contract.md)
 
@@ -57,7 +57,6 @@ With options:
     "contextManagement": true,
     "gitStatus": true,
     "modelFilter": "claude",
-    "scratchpadDirName": "claude",
     "gitTimeoutMs": 5000,
     "extraEnvironment": { "team": "platform" }
   }]]
@@ -101,7 +100,7 @@ flowchart LR
 | `contextManagement` | `true` | Send `x-hermes-context-management` |
 | `gitStatus` | `true` | Send `x-hermes-git-status` |
 | `modelFilter` | `"claude"` | Only report when the model ID contains this substring; `""` disables filtering |
-| `scratchpadDirName` | `"claude"` | Base directory name under the temp root |
+| `scratchpadDirName` | Unix: `"claude-<uid>"`; Windows: `"claude"` | Base directory name under the temp root; explicit values are used exactly, with no UID appended |
 | `gitTimeoutMs` | `5000` | Per-git-command timeout |
 | `extraEnvironment` | — | Extra key/value pairs merged into the environment JSON |
 
@@ -111,6 +110,18 @@ flowchart LR
 |---|---|
 | `HERMES_CONTEXT_DISABLE=1` | Disable the plugin entirely — no headers at all |
 | `CLAUDE_CODE_TMPDIR` | Scratchpad temp root (same semantics as Claude Code) |
+
+### Scratchpad Paths
+
+The layout is `<root>/<base>/<project-name>-<hash>/<full-sessionID>/scratchpad`:
+
+- The default root is `/tmp` on macOS (resolved to `/private/tmp`), and `os.tmpdir()` on Linux and Windows. A nonempty `CLAUDE_CODE_TMPDIR` overrides it.
+- The default base is `claude-<uid>` on Unix and `claude` on Windows. Omit `scratchpadDirName` to keep this platform-aware default; an explicit `"claude"` disables the Unix UID suffix.
+- The project segment preserves Unicode (for example, `笔记Note-<8 hex digits>`). Its suffix is the first eight lowercase SHA-256 hex digits of the normalized absolute working-directory path, distinguishing same-named projects in different locations. This is lexical normalization, not symlink resolution.
+- Filesystem-invalid characters are replaced with `-`, trailing dots/spaces removed, and an empty/root basename becomes `root`. The readable name is capped at 200 UTF-8 bytes without splitting Unicode code points; the entire segment is at most 209 bytes.
+- The full session ID is retained. Directories are created with mode `0o700` (subject to platform support). Header JSON remains ASCII-safe and restores the Unicode path on parsing.
+
+This intentionally differs from Claude Code's project slug. Existing scratchpads are not migrated or deleted, and session caching and OpenCode access permissions are unchanged.
 
 ## Development
 

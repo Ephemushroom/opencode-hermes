@@ -21,7 +21,7 @@ const OptionsSchema = z.object({
   scratchpad: z.boolean().default(true),
   contextManagement: z.boolean().default(true),
   gitStatus: z.boolean().default(true),
-  scratchpadDirName: z.string().min(1).default("claude"),
+  scratchpadDirName: z.string().min(1).optional(),
   extraEnvironment: z.record(z.string(), z.string()).optional(),
   gitTimeoutMs: z.number().int().positive().default(5000),
   modelFilter: z.string().default("claude"),

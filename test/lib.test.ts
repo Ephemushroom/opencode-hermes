@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { createHash } from "node:crypto"
 import * as os from "node:os"
 import * as path from "node:path"
 import * as fs from "node:fs"
@@ -8,10 +9,14 @@ import { test } from "node:test"
 import {
   FLATTEN_CAP,
   detectShell,
+  defaultScratchpadDirName,
+  ensureScratchpadDir,
   flattenCwd,
   gitSnapshot,
   isGitRepo,
   scratchpadPathFor,
+  scratchpadProjectSegment,
+  tmpRoot,
   toHeaderJson,
 } from "../src/lib.js"
 
@@ -36,15 +41,61 @@ test("toHeaderJson: 非 ASCII 转义且可无损还原", () => {
   assert.deepEqual(JSON.parse(encoded), value)
 })
 
-test("scratchpadPathFor: 路径五段结构与 Claude Code 一致", () => {
+test("scratchpad defaults follow platform and environment precedence", () => {
+  for (const platform of ["darwin", "linux", "win32"] as const) {
+    assert.equal(tmpRoot(platform, "system-temp", ""), platform === "darwin" ? "/tmp" : "system-temp")
+    assert.equal(tmpRoot(platform, "system-temp", "custom-temp"), "custom-temp")
+    assert.equal(defaultScratchpadDirName(platform, 501), platform === "win32" ? "claude" : "claude-501")
+  }
+})
+
+test("scratchpad project segment retains Unicode and hashes normalized absolute paths", () => {
+  const cwd = "/home/user/笔记Note"
+  const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 8)
+  assert.equal(scratchpadProjectSegment(cwd, "linux"), `笔记Note-${hash}`)
+  assert.equal(scratchpadProjectSegment("/home/user/other/../笔记Note/", "linux"), `笔记Note-${hash}`)
+  assert.notEqual(scratchpadProjectSegment("/other/笔记Note", "linux"), `笔记Note-${hash}`)
+  assert.equal(scratchpadProjectSegment("笔记Note"), scratchpadProjectSegment(path.resolve("笔记Note")))
+  assert.match(scratchpadProjectSegment("C:\\work\\笔记Note\\", "win32"), /^笔记Note-[0-9a-f]{8}$/)
+  assert.match(scratchpadProjectSegment("/", "linux"), /^root-[0-9a-f]{8}$/)
+  assert.match(scratchpadProjectSegment("C:\\", "win32"), /^root-[0-9a-f]{8}$/)
+})
+
+test("scratchpad project segment sanitizes names and bounds Unicode bytes without splitting code points", () => {
+  assert.match(scratchpadProjectSegment('/work/a<>:"\\|?*\x01. ', "linux"), /^a-{9}-[0-9a-f]{8}$/)
+  const segment = scratchpadProjectSegment(`/work/${"笔记😀".repeat(100)}`, "linux")
+  assert.ok(Buffer.byteLength(segment, "utf8") <= 209)
+  assert.equal(segment.includes("\ufffd"), false)
+  assert.equal(Buffer.from(segment).toString("utf8"), segment)
+  assert.match(segment, /-[0-9a-f]{8}$/)
+})
+
+test("scratchpadPathFor: readable layout, full session ID, exact override and actual creation", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hermes-test-"))
   const prev = process.env.CLAUDE_CODE_TMPDIR
   process.env.CLAUDE_CODE_TMPDIR = tmp
   try {
-    const p = scratchpadPathFor("D:\\Programme\\AI\\cc", "sess-123")
+    const cwd = path.join(tmp, "笔记Note")
+    const sessionID = "ses_1234567890_full_session_id"
+    const p = scratchpadPathFor(cwd, sessionID)
     assert.ok(p !== null)
     const rel = path.relative(fs.realpathSync.native(tmp), p!)
-    assert.equal(rel, path.join("claude", "D--Programme-AI-cc", "sess-123", "scratchpad"))
+    assert.equal(rel, path.join(defaultScratchpadDirName(), scratchpadProjectSegment(cwd), sessionID, "scratchpad"))
+    assert.equal(fs.existsSync(p), false)
+    assert.equal(ensureScratchpadDir(cwd, sessionID), p)
+    assert.equal(fs.statSync(p).isDirectory(), true)
+    if (process.platform !== "win32") assert.equal(fs.statSync(p).mode & 0o777, 0o700)
+    const header = toHeaderJson({ path: p })
+    assert.ok(Array.from(header).every((character) => character.charCodeAt(0) <= 127))
+    assert.deepEqual(JSON.parse(header), { path: p })
+    const custom = scratchpadPathFor(cwd, sessionID, "custom-name")
+    assert.equal(custom, path.join(fs.realpathSync.native(tmp), "custom-name", scratchpadProjectSegment(cwd), sessionID, "scratchpad"))
+    assert.equal(scratchpadPathFor(cwd, sessionID, "claude"), path.join(fs.realpathSync.native(tmp), "claude", scratchpadProjectSegment(cwd), sessionID, "scratchpad"))
+    const long = ensureScratchpadDir(path.join(tmp, "笔记😀".repeat(100)), sessionID)
+    assert.ok(long !== null && fs.statSync(long).isDirectory())
+    const blocked = path.join(tmp, "blocked")
+    fs.writeFileSync(blocked, "not a directory")
+    assert.equal(ensureScratchpadDir(cwd, sessionID, "blocked"), null)
   } finally {
     if (prev === undefined) delete process.env.CLAUDE_CODE_TMPDIR
     else process.env.CLAUDE_CODE_TMPDIR = prev
