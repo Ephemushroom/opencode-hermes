@@ -1,12 +1,12 @@
 # opencode-hermes
 
-Claude Code-style context reporting for [OpenCode](https://opencode.ai) — delivered as `x-hermes-*` HTTP request headers instead of prompt mutations.
+Claude Code-style context reporting for [OpenCode](https://opencode.ai), delivered as `x-hermes-*` HTTP request headers, with narrowly scoped V2 scratchpad guidance synchronization.
 
 On every LLM request the plugin computes Claude Code-style dynamic context blocks (environment, scratchpad directory, git startup snapshot) and sends them as request headers. A gateway (e.g. Hermes) parses the headers, rebuilds the context blocks, and injects them into the request body — so context assembly lives in one place, on the server side. Scratchpad project names intentionally use a readable basename plus a short path hash instead of Claude Code's flattened full path.
 
 [中文说明](README.zh-CN.md) · [Gateway contract (解析与注入规范)](docs/gateway-contract.md)
 
-> **Note:** This plugin only *reports* facts. It does not modify your system prompt — injection is the gateway's job. Without a gateway that understands the headers, they pass through harmlessly.
+> **Note:** Full context-block injection remains the gateway's job. V1 only reports headers. V2 also replaces OpenCode's identifiable built-in temporary-directory recommendation for eligible Claude requests with the reported scratchpad path. This request-only synchronization works without a gateway; it does not inject a second context block.
 
 ## Quick Start
 
@@ -37,7 +37,7 @@ From v0.2.0, both OpenCode generations use the **same package name**. OpenCode 2
 }
 ```
 
-The V2 adapter targets `@opencode/plugin` **2.0.6** and only reports context headers. OpenCode's native `execute` and Code Mode `search(...)` own tool execution and discovery; Hermes owns the Claude Code `ToolSearch` compatibility layer. The plugin does not register ToolSearch, maintain tool aliases, or submit synthetic search-result messages. Native `User-Agent` and `x-opencode-*` identity headers are preserved so Hermes can select `NativeBridge`.
+The V2 adapter targets `@opencode/plugin` **2.0.6** and reports context headers plus the request-level scratchpad synchronization described below (verified with OpenCode **2.2.7**). OpenCode's native `execute` and Code Mode `search(...)` own tool execution and discovery; Hermes owns the Claude Code `ToolSearch` compatibility layer. The plugin does not register ToolSearch, maintain tool aliases, or submit synthetic search-result messages. Native `User-Agent` and `x-opencode-*` identity headers are preserved so Hermes can select `NativeBridge`.
 
 Starting with plugin **v0.3.0**, remove the obsolete `toolSearchDelivery` option (old values are ignored). Upgrade Hermes to **v0.4.8 or later** before upgrading the plugin. V1 retains its existing context adapter and requires a host with object-style `server()` support.
 
@@ -77,7 +77,9 @@ With options:
 
 ### Model filtering
 
-Headers are sent **only when the model ID contains `claude`** (case-insensitive). Requests to other models (kimi, gpt, …) pass through untouched — the gateway should not inject Claude Code-style context for them. Bedrock/OpenRouter-style IDs like `anthropic.claude-*` match as well. Change the substring with `modelFilter`, or set it to `""` to report for all models. Filtering is per-request: switching models mid-session only affects the requests that use them.
+By default, headers are sent **only when the model ID contains `claude`** (case-insensitive). Requests to other models (kimi, gpt, …) pass through untouched. Bedrock/OpenRouter-style IDs like `anthropic.claude-*` match as well. Change the substring with `modelFilter`, or set it to `""` to report headers for all models. Filtering uses each request's actual model, including auxiliary requests and mid-session model switches.
+
+V2 prompt synchronization requires **both** a model ID containing `claude` and a `modelFilter` match. A custom filter such as `"sonnet"` narrows the eligible Claude models. A filter such as `"gpt"` or `""` can enable headers on non-Claude models, but never changes their prompts.
 
 ## How It Works
 
@@ -87,7 +89,7 @@ flowchart LR
     GW -->|1. parse headers<br/>2. inject context blocks<br/>into system prompt<br/>3. strip headers| UP[Upstream<br/>LLM provider]
 ```
 
-- The `chat.headers` hook fires on every LLM request; per-session caches keep git and scratchpad work to one shot per session.
+- V1 uses `chat.headers`; V2 uses `model.request` for headers and `context`, `compaction`, `generate`, and `title` for scratchpad synchronization. Header and prompt hooks share the same session-cached, created scratchpad path regardless of hook order. Prompt hooks do not run git commands.
 - The gateway must **strip all `x-hermes-*` headers** before forwarding — they contain local paths and must never leak upstream raw.
 - Parsing, injection templates, and C# examples: [docs/gateway-contract.md](docs/gateway-contract.md).
 
@@ -96,10 +98,10 @@ flowchart LR
 | Option | Default | Description |
 |---|---|---|
 | `environment` | `true` | Send `x-hermes-environment` |
-| `scratchpad` | `true` | Send `x-hermes-scratchpad` and create the directory |
+| `scratchpad` | `true` | Create the directory, send `x-hermes-scratchpad`, and synchronize eligible V2 temporary-directory guidance |
 | `contextManagement` | `true` | Send `x-hermes-context-management` |
 | `gitStatus` | `true` | Send `x-hermes-git-status` |
-| `modelFilter` | `"claude"` | Only report when the model ID contains this substring; `""` disables filtering |
+| `modelFilter` | `"claude"` | Header substring filter; `""` reports for all models. V2 prompt synchronization additionally requires `claude` in the model ID |
 | `scratchpadDirName` | Unix: `"claude-<uid>"`; Windows: `"claude"` | Base directory name under the temp root; explicit values are used exactly, with no UID appended |
 | `gitTimeoutMs` | `5000` | Per-git-command timeout |
 | `extraEnvironment` | — | Extra key/value pairs merged into the environment JSON |
@@ -108,7 +110,7 @@ flowchart LR
 
 | Variable | Effect |
 |---|---|
-| `HERMES_CONTEXT_DISABLE=1` | Disable the plugin entirely — no headers at all |
+| `HERMES_CONTEXT_DISABLE=1` (or `true`) | Disable the plugin entirely: no headers or prompt synchronization |
 | `CLAUDE_CODE_TMPDIR` | Scratchpad temp root (same semantics as Claude Code) |
 
 ### Scratchpad Paths
@@ -123,6 +125,14 @@ The layout is `<root>/<base>/<project-name>-<hash>/<full-sessionID>/scratchpad`:
 
 This intentionally differs from Claude Code's project slug. Existing scratchpads are not migrated or deleted, and session caching and OpenCode access permissions are unchanged.
 
+### V2 Temporary-Directory Guidance
+
+For eligible requests, V2 replaces only the built-in `Prefer ... over generic system temporary directories such as /tmp; it is pre-created and approved for external access.` line inside `core/environment`. The new line is `Prefer <scratchpad path> for temporary work files instead of generic system temporary directories.` It uses the actual existing path from `x-hermes-scratchpad`, without claiming that OpenCode has preapproved access to it.
+
+The replacement requires valid `metadata.experimental.instructions` provenance, exactly one identifiable core environment, and a unique visible match. The instruction-bearing part must still exactly equal its metadata source texts joined with blank lines. Missing/malformed metadata, duplicate candidates, edits by an earlier plugin, or an unknown template cause a conservative no-op. There is **no text-only fallback** and no competing instruction is appended. Older hosts without this experimental metadata still receive headers, but keep their original recommendation.
+
+Only outgoing system text is changed. Metadata, unrelated environment lines, custom/quoted copies, user messages, stored history, native identity, and tools remain untouched. Auxiliary hooks apply the same rules and do nothing when their request has no matching environment. `scratchpad: false`, the kill switch, model filtering, or directory creation failure prevents synchronization. The plugin does not change `Global.tmp`, `TMPDIR`, OpenCode's own temporary files, or permission rules; accessing the scratchpad may still require approval.
+
 ## Development
 
 ```bash
@@ -132,6 +142,15 @@ bun run typecheck   # tsc --noEmit (strict)
 bun run build       # bundle dist/index.js + emit declarations
 bun run lint        # oxlint
 ```
+
+Optional isolated end-to-end capture (requires an installed OpenCode 2.2.7 binary):
+
+```bash
+bun run build
+QA_OPENCODE_BIN=/path/to/opencode node test/v2-live-capture.mjs /path/to/approved/temp/root
+```
+
+This starts private `run --standalone` servers and a localhost mock provider, with separate home/config/data/database directories and dummy credentials. It checks final Claude, non-Claude, and disabled requests plus native tool continuations, writes sanitized captures/results under the given root, and removes its runtime directories and processes. It never connects to a real model provider or the existing desktop service.
 
 The plugin executes using Node/Bun built-ins and Zod. Both OpenCode SDK imports are type-only (erased at build time); their packages remain dependencies so published TypeScript declarations can resolve them. No SDK or Effect code is imported at runtime.
 

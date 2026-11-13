@@ -32,6 +32,37 @@ function disabled(): boolean {
   return value === "1" || value === "true";
 }
 
+const InstructionMetadata = z.object({
+  experimental: z.object({
+    instructions: z.array(z.object({ key: z.string(), text: z.string() })),
+  }),
+});
+
+const temporaryRecommendation =
+  /^  Prefer [^\r\n]+ over generic system temporary directories such as \/tmp; it is pre-created and approved for external access\.$/gm;
+
+function scratchpadTarget(
+  system: { text: string; metadata?: Record<string, unknown> | undefined }[],
+) {
+  const candidates = system.flatMap((part, index) => {
+    const metadata = InstructionMetadata.safeParse(part.metadata);
+    if (!metadata.success) return [];
+    const instructions = metadata.data.experimental.instructions;
+    return instructions
+      .filter((entry) => entry.key === "core/environment")
+      .map((entry) => ({ index, part, instructions, environment: entry.text }));
+  });
+  if (candidates.length !== 1) return;
+  const { index, part, instructions, environment } = candidates[0]!;
+  if (part.text !== instructions.map((entry) => entry.text).join("\n\n")) return;
+  if (part.text.indexOf(environment) !== part.text.lastIndexOf(environment)) return;
+  const block = environment.match(/(?:^|\n)<env>\n([^]*)\n<\/env>$/);
+  if (!block) return;
+  const lines = [...environment.matchAll(temporaryRecommendation)];
+  if (lines.length !== 1 || !block[1]!.includes(lines[0]![0])) return;
+  return { index, environment, line: lines[0]![0] };
+}
+
 const HermesOpenCode2Plugin = {
   id: "ephemushroom.hermes.opencode2",
   setup: async (ctx) => {
@@ -40,18 +71,58 @@ const HermesOpenCode2Plugin = {
     const gitCache = new Map<string, GitSnapshot | null>();
     const scratchpadCache = new Map<string, string | null>();
     const gitRepoCache = new Map<string, boolean>();
+    const modelFilter = options.modelFilter.toLowerCase();
+    const matchesModel = (id: string) =>
+      modelFilter === "" || id.toLowerCase().includes(modelFilter);
+    const directoryFor = async (sessionID: Parameters<typeof ctx.session.get>[0]["sessionID"]) => {
+      let directory = directories.get(sessionID);
+      if (directory === undefined) {
+        const session = await ctx.session.get({ sessionID });
+        directory = session.location.directory;
+        directories.set(sessionID, directory);
+      }
+      return directory;
+    };
+    const scratchpadFor = async (sessionID: Parameters<typeof ctx.session.get>[0]["sessionID"]) => {
+      const directory = await directoryFor(sessionID);
+      let scratchpad = scratchpadCache.get(sessionID);
+      if (scratchpad === undefined) {
+        scratchpad = ensureScratchpadDir(directory, sessionID, options.scratchpadDirName);
+        scratchpadCache.set(sessionID, scratchpad);
+      }
+      return scratchpad;
+    };
+
+    for (const hook of ["context", "compaction", "generate", "title"] as const) {
+      await ctx.session.hook(hook, async (event) => {
+        if (
+          disabled() ||
+          !options.scratchpad ||
+          !matchesModel(event.model.id) ||
+          !event.model.id.toLowerCase().includes("claude")
+        )
+          return;
+        const target = scratchpadTarget(event.system);
+        if (!target) return;
+        const scratchpad = await scratchpadFor(event.sessionID);
+        if (scratchpad === null) return;
+        const part = event.system[target.index]!;
+        event.system[target.index] = {
+          ...part,
+          text: part.text.replace(target.environment, () =>
+            target.environment.replace(
+              target.line,
+              () =>
+                `  Prefer ${scratchpad} for temporary work files instead of generic system temporary directories.`,
+            ),
+          ),
+        };
+      });
+    }
 
     await ctx.session.hook("model.request", async (event) => {
-      if (disabled()) return;
-      const modelFilter = options.modelFilter.toLowerCase();
-      if (modelFilter !== "" && !event.model.id.toLowerCase().includes(modelFilter)) return;
-
-      let directory = directories.get(event.sessionID);
-      if (directory === undefined) {
-        const session = await ctx.session.get({ sessionID: event.sessionID });
-        directory = session.location.directory;
-        directories.set(event.sessionID, directory);
-      }
+      if (disabled() || !matchesModel(event.model.id)) return;
+      const directory = await directoryFor(event.sessionID);
 
       // ToolSearch belongs to Hermes' native Code Mode bridge. Keep the
       // client's native identity and tool inventory untouched.
@@ -83,11 +154,7 @@ const HermesOpenCode2Plugin = {
       }
 
       if (options.scratchpad) {
-        let scratchpad = scratchpadCache.get(event.sessionID);
-        if (scratchpad === undefined) {
-          scratchpad = ensureScratchpadDir(directory, event.sessionID, options.scratchpadDirName);
-          scratchpadCache.set(event.sessionID, scratchpad);
-        }
+        const scratchpad = await scratchpadFor(event.sessionID);
         if (scratchpad !== null)
           event.headers[HEADER_SCRATCHPAD] = toHeaderJson({ path: scratchpad });
       }

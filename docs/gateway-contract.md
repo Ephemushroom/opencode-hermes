@@ -1,7 +1,7 @@
 # Hermes 网关处理文档 — x-hermes-* 上下文头
 
 > 契约版本: **1**(`x-hermes-context-version: 1`)
-> 上游来源: `opencode-hermes` 插件(`chat.headers` 钩子,每次 LLM 请求都携带)
+> 上游来源: `opencode-hermes` 插件(V1 `chat.headers` / V2 `model.request`，按请求模型过滤)
 > 目标: 解析头部事实,还原 Claude Code 风格的四块上下文,注入请求体后转发上游。
 
 ---
@@ -25,6 +25,13 @@ opencode ──HTTP──▶ Hermes ──HTTP──▶ 上游 LLM
 **注意**:插件默认仅在模型 ID 含 `claude`(大小写不敏感)时上报 — 网关在
 kimi/gpt 等模型的请求上看不到这些头,属正常行为而非故障(插件侧
 `modelFilter` 选项可改)。
+
+V2 还会在模型 ID 含 `claude` 且命中 `modelFilter` 的请求中，把可明确识别的
+OpenCode 内置临时目录建议替换为 `x-hermes-scratchpad` 的实际路径。仅替换一行，
+不在插件中注入上述四块上下文；网关契约和剥离规则不变。
+替换依赖有效的实验性 `core/environment` 来源元数据、与来源列表一致的可见文本及唯一匹配。
+元数据缺失/畸形、文本有歧义或模板不匹配时保守 no-op，不使用纯文本 fallback。
+自定义/空过滤器仍可让非 Claude 请求携带 header，但绝不修改其提示词。
 
 ---
 
@@ -81,6 +88,9 @@ kimi/gpt 等模型的请求上看不到这些头,属正常行为而非故障(插
   这有意不同于 Claude Code 的全路径打平算法；网关必须把路径视为不透明值，不重算;
 - 旧目录不迁移或删除，会话缓存和 OpenCode 访问权限配置不变;
 - 客户端创建失败时该头**整体缺失**,网关按不注入处理;
+- V2 请求级临时目录建议与此头共享同一个会话缓存路径。`scratchpad: false`、
+  `HERMES_CONTEXT_DISABLE=1/true`、过滤未命中或目录创建失败时不替换建议。
+  新建议不声称目录已获权限批准；`Global.tmp`、`TMPDIR`、权限配置、历史和原生工具不变;
 - 路径含本地用户名与项目路径 — 注入给模型是设计意图(对齐 Claude Code),
   但必须随头一起剥离,不得出现在转发上游的原始 header 中。
 

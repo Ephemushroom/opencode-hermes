@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.2] - 2026-11-13
+
+- Synchronize V2 Claude requests' identifiable built-in temporary-directory
+  recommendation with the existing session scratchpad reported in
+  `x-hermes-scratchpad`, including auxiliary request hooks and tool continuations
+- Require valid, unambiguous `core/environment` provenance and intact visible
+  source text; missing/malformed experimental metadata or unknown templates are
+  no-ops, with no text-only fallback or appended context block
+- Keep custom/empty `modelFilter` header semantics; prompt synchronization also
+  requires `claude` in the actual request model ID and respects scratchpad/off
+  switches and creation failures. V1, native tools/identity, history, core temp
+  paths and permissions remain unchanged
+- Add hook-level coverage and an isolated OpenCode 2.2.7 localhost-provider
+  capture harness for final requests and native tool continuations
+
 ## [0.3.1] - 2026-11-12
 
 - Use platform-aware scratchpad roots: `/tmp` on macOS (realpath `/private/tmp`),
